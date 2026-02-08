@@ -13,7 +13,6 @@ const handler: Handler = async (event: HandlerEvent) => {
   try {
     // Get API key from environment variable
     const apiKey = process.env.GEMINI_API_KEY;
-    
     if (!apiKey) {
       console.error("GEMINI_API_KEY is not set");
       return {
@@ -23,68 +22,34 @@ const handler: Handler = async (event: HandlerEvent) => {
     }
 
     // Parse request body
-    const { model, contents, config } = JSON.parse(event.body || "{}");
+    const body = JSON.parse(event.body || "{}");
+    const { model, contents, config } = body;
 
-    if (!model || !contents) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "Missing required fields: model, contents" }),
-      };
-    }
+    // Use a default model if not provided, or the one from the request
+    const modelName = model || "gemini-1.5-flash"; 
 
-    // Initialize Gemini AI (matching your project's syntax)
+    // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(apiKey);
-    const geminiModel = genAI.getGenerativeModel({ model });
+    const geminiModel = genAI.getGenerativeModel({ model: modelName });
 
     // Prepare generation config
-    let generationConfig: any = {
+    const generationConfig = {
       temperature: 0.7,
       maxOutputTokens: 8192,
+      ...config, // Allow overriding config from frontend
     };
 
-    // Handle tools configuration
-    let tools: any[] | undefined;
-    
-    if (config?.tools) {
-      tools = config.tools.map((tool: any) => {
-        if (tool.googleSearch) {
-          return { googleSearch: {} };
-        }
-        if (tool.googleMaps) {
-          return { googleMaps: {} };
-        }
-        return tool;
-      });
-    }
-
-    // Prepare the request
-    const requestOptions: any = {
-      generationConfig,
-    };
-
-    if (tools && tools.length > 0) {
-      requestOptions.tools = tools;
-    }
-
-    // Handle tool config (for Maps grounding with location)
-    if (config?.toolConfig) {
-      requestOptions.toolConfig = config.toolConfig;
-    }
-
-    // Prepare contents
-    let formattedContents;
+    // Prepare content for generation
+    // Ensure contents are in the correct format for the API
+    let formattedContents = contents;
     if (typeof contents === 'string') {
-      formattedContents = [{ role: 'user', parts: [{ text: contents }] }];
-    } else if (Array.isArray(contents)) {
-      formattedContents = contents;
-    } else {
-      formattedContents = [{ role: 'user', parts: [{ text: JSON.stringify(contents) }] }];
+        formattedContents = [{ role: 'user', parts: [{ text: contents }] }];
     }
 
     // Generate content
     const result = await geminiModel.generateContent({
       contents: formattedContents,
-      ...requestOptions,
+      generationConfig,
     });
 
     const response = result.response;
@@ -94,7 +59,7 @@ const handler: Handler = async (event: HandlerEvent) => {
       statusCode: 200,
       headers: {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": "*", // Allow all origins (CORS)
         "Access-Control-Allow-Headers": "Content-Type",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
       },
@@ -107,7 +72,24 @@ const handler: Handler = async (event: HandlerEvent) => {
 
   } catch (error: any) {
     console.error("Error in Gemini function:", error);
-    
+
+    // --- CRITICAL FIX STARTS HERE ---
+    // Check if the error is a 429 (Rate Limit)
+    if (error.status === 429 || error.message?.includes('429') || error.statusText === 'Too Many Requests') {
+        return {
+            statusCode: 429, // Return 429 so the frontend knows to use Cache
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+            },
+            body: JSON.stringify({
+                error: "Rate limit exceeded",
+                message: "Traffic is high. Please wait a moment.",
+            }),
+        };
+    }
+    // --- CRITICAL FIX ENDS HERE ---
+
     return {
       statusCode: 500,
       headers: {
