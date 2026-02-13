@@ -30,7 +30,7 @@ const callGeminiBackend = async (payload: any) => {
  */
 export const searchTechEvents = async (): Promise<{ events: TechEvent[]; rawText: string; groundingMetadata?: GroundingMetadata }> => {
   try {
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-2.0-flash";
     const prompt = `
       Act as a highly resourceful tech scout for the Delhi NCR startup and developer ecosystem.
       I need a **massive and diverse list** of upcoming technology events, hackathons, workshops, and meetups for the next 3 months in Delhi NCR.
@@ -127,7 +127,7 @@ export const searchTechEvents = async (): Promise<{ events: TechEvent[]; rawText
  */
 export const getEventDetails = async (title: string, description: string): Promise<string> => {
   try {
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-2.0-flash";
     const prompt = `
       I need a detailed guide for the following event:
       Name: "${title}"
@@ -206,7 +206,7 @@ export const exploreTechVenues = async (lat?: number, lng?: number): Promise<{ t
  */
 export const chatWithGemini = async (message: string, history: {role: string, parts: {text: string}[]}[]): Promise<string> => {
   try {
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-2.0-flash";
     
     const data = await callGeminiBackend({
       model,
