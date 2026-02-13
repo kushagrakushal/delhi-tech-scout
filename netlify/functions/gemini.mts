@@ -26,34 +26,40 @@ const handler: Handler = async (event: HandlerEvent) => {
     const { model, contents, config } = body;
 
     // Use a default model if not provided, or the one from the request
-    const modelName = model || "gemini-1.5-flash"; 
+    const modelName = model || "gemini-2.5-flash";
 
     // Initialize Gemini AI
     const genAI = new GoogleGenerativeAI(apiKey);
     const geminiModel = genAI.getGenerativeModel({ model: modelName });
 
-    // Prepare generation config
+    // Extract tools and toolConfig from config so they don't end up nested
+    // inside generationConfig (the Gemini API requires them at the top level)
+    const { tools, toolConfig, ...restConfig } = config || {};
+
+    // Prepare generation config (must NOT contain tools or toolConfig)
     const generationConfig = {
       temperature: 0.7,
       maxOutputTokens: 8192,
-      ...config, // Allow overriding config from frontend
+      ...restConfig,
     };
 
     // Prepare content for generation
     // Ensure contents are in the correct format for the API
     let formattedContents = contents;
-    if (typeof contents === 'string') {
-        formattedContents = [{ role: 'user', parts: [{ text: contents }] }];
+    if (typeof contents === "string") {
+      formattedContents = [{ role: "user", parts: [{ text: contents }] }];
     }
 
-    // Generate content
+    // Generate content — tools passed at top level, not inside generationConfig
     const result = await geminiModel.generateContent({
       contents: formattedContents,
       generationConfig,
+      ...(tools && { tools }),           // top-level, only if present
+      ...(toolConfig && { toolConfig }), // top-level, only if present
     });
 
     const response = result.response;
-    
+
     // Return the complete response including grounding metadata
     return {
       statusCode: 200,
@@ -75,18 +81,18 @@ const handler: Handler = async (event: HandlerEvent) => {
 
     // --- CRITICAL FIX STARTS HERE ---
     // Check if the error is a 429 (Rate Limit)
-    if (error.status === 429 || error.message?.includes('429') || error.statusText === 'Too Many Requests') {
-        return {
-            statusCode: 429, // Return 429 so the frontend knows to use Cache
-            headers: {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*",
-            },
-            body: JSON.stringify({
-                error: "Rate limit exceeded",
-                message: "Traffic is high. Please wait a moment.",
-            }),
-        };
+    if (error.status === 429 || error.message?.includes("429") || error.statusText === "Too Many Requests") {
+      return {
+        statusCode: 429, // Return 429 so the frontend knows to use Cache
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({
+          error: "Rate limit exceeded",
+          message: "Traffic is high. Please wait a moment.",
+        }),
+      };
     }
     // --- CRITICAL FIX ENDS HERE ---
 
